@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 #include <SPI.h>
 #include <MFRC522.h>
 #include <WiFi.h>
@@ -6,20 +8,66 @@
 
 void enviarDados(String uid);
 
-// Pinos conforme sua solicitação
+// Pinos
 #define SS_PIN    5
 #define RST_PIN   22
 #define LED_PIN   2
 
 // Configurações de rede
-const char* ssid = "RIBEIRO";
-const char* password = "Trt111930#";
-
-// IP do seu computador onde o app Python está rodando
-// Exemplo: "http://192.168.0"
-const char* serverUrl = "http://192.168.0.209:5000/log";  //Lembrar de mudar para o IP do seu computador
+String ssid;
+String password;
+String serverUrl;
 
 MFRC522 rfid(SS_PIN, RST_PIN);
+
+// Carrega as configurações do LittleFS
+bool carregarConfig() {
+  // 1. Tenta montar o sistema de arquivos
+  if (!LittleFS.begin(true)) {
+    Serial.println("[-] Erro crítico: Falha ao montar LittleFS");
+    return false;
+  }
+
+  // 2. Verifica se o arquivo existe. Se não, tenta criar o padrão.
+  if (!LittleFS.exists("/config.json")) {
+    Serial.println("[!] Arquivo config.json não encontrado. Criando padrão...");
+    
+    File writeFile = LittleFS.open("/config.json", "w");
+    if (!writeFile) {
+      Serial.println("[-] Erro ao criar arquivo config.json");
+      return false;
+    };
+  }
+
+  // 3. Abre o arquivo para leitura
+  File configFile = LittleFS.open("/config.json", "r");
+  if (!configFile) {
+    Serial.println("[-] Erro ao abrir config.json para leitura");
+    return false;
+  }
+
+  // 4. Faz o parsing do JSON
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, configFile);
+  configFile.close();
+
+  if (error) {
+    Serial.print("[-] Erro no processamento do JSON: ");
+    Serial.println(error.c_str());
+    return false;
+  }
+
+  // 5. Atribui às variáveis globais
+  ssid = doc["ssid"].as<String>();
+  password = doc["password"].as<String>();
+  serverUrl = doc["serverUrl"].as<String>();
+
+  Serial.println("[+] Configurações carregadas:");
+  Serial.println("    SSID: " + ssid);
+  Serial.println("    URL:  " + serverUrl);
+
+  return true;
+}
 
 void setup() {
   Serial.begin(115200);
@@ -28,7 +76,15 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
 
-  WiFi.begin(ssid, password);
+   if (!carregarConfig()) {
+    Serial.println("Usando configurações padrão ou travando por falta de dados.");
+  }
+
+   Serial.println("Conectando ao WiFi...");
+  Serial.println("Conectando ao SSID: " + ssid);
+  WiFi.begin(ssid.c_str(), password.c_str());
+
+  WiFi.begin(ssid.c_str(), password.c_str());
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");

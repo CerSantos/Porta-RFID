@@ -14,21 +14,34 @@ app = Flask(__name__)
 ip_esp = "192.168.0.206"
 usuario = "admin"
 senha = "123"
+ip = ip_esp
+user = usuario
+password = senha
+
 cont = 0
 log_display = None
 
 ARQUIVO_CONFIG = "config.json"
 
 # --- LÓGICA DE CONFIGURAÇÃO ---
-def salvar_config(ip, user, password):
-    global ip_esp, usuario, senha
-    if password != senha:
+def salvar_config(novo_ip, novo_user, novo_password):
+    global ip_esp, usuario, senha, ip, user, password   
+
+    # Validação simples para não salvar campos vazios
+    if not novo_ip or not novo_user or not novo_password:
+        messagebox.showwarning("Aviso", "Todos os campos devem ser preenchidos.")
+        return
+    
+    if novo_password != senha:
         confirmar = messagebox.askyesno("Confirmar Alteração","Você tem certeza que deseja alterar a senha de acesso?")
         if not confirmar:
             return
-    ip_esp, usuario, senha = ip, user, password
-    salvar_no_arquivo(ip, user, password)
     
+    ip_esp = ip = novo_ip
+    usuario = user = novo_user
+    senha = password = novo_password
+    salvar_no_arquivo(ip, user, password)
+
     
     messagebox.showinfo("Configurações Salvas", "Os dados foram gravados permanentemente.")
 
@@ -45,13 +58,28 @@ def carregar_config():
         ip_esp, usuario, senha = "192.168.0.206", "admin", "123" # Valores padrão se o arquivo não existir
 
 def salvar_no_arquivo(ip, user, password):
-    dados = {
+    dados_existentes = {}
+     # 1. Tenta ler o que já está no arquivo para não apagar o Wi-Fi
+    if os.path.exists(ARQUIVO_CONFIG):
+        try:
+            with open(ARQUIVO_CONFIG, "r") as f:
+                dados_existentes = json.load(f)
+        except Exception as e:
+            print(f"Erro ao ler arquivo: {e}")
+
+    dados_existentes.update({
         "ip": ip,
         "usuario": user,
         "senha": password
-    }
-    with open(ARQUIVO_CONFIG, "w") as f:
-        json.dump(dados, f, indent=4)
+    })
+
+    # 3. Salva de volta
+    try:
+        with open(ARQUIVO_CONFIG, "w") as f:
+            json.dump(dados_existentes, f, indent=4)
+        print("Configurações atualizadas sem apagar os dados do ESP32.")
+    except Exception as e:
+        print(f"Erro ao salvar arquivo: {e}")
 
 # --- INTERFACES ---
 def entrada():
@@ -182,6 +210,6 @@ def iniciar_servidor():
     app.run(host='0.0.0.0', port=5000,debug=False, use_reloader=False)
 
 if __name__ == "__main__":
-    threading.Thread(target=iniciar_servidor, daemon=True).start()
     carregar_config()
+    threading.Thread(target=iniciar_servidor, daemon=True).start()
     janela()
