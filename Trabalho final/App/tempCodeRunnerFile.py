@@ -53,8 +53,8 @@ def salvar_config(novo_ip, novo_user, novo_password):
     
     for u in BANCO_DE_USUARIOS:
        if u.username == usuario_logado.username:  # Só atualiza o usuário logado
-            u.username =  novo_user
-            u.password = novo_password
+            u.username ==  novo_user
+            u.password == novo_password
             break
     
     # Atualiza a sessão atual
@@ -79,7 +79,7 @@ def carregar_config():
                 if not lista:
                     BANCO_DE_USUARIOS = [usuario_default]
                 else:
-                    BANCO_DE_USUARIOS = [Usuario(u.get("username"), u.get("password"), u.get("nivel_acesso")) for u in lista]
+                    BANCO_DE_USUARIOS = [Usuario(u.get("u"), u.get("s"), u.get("n")) for u in lista]
         except Exception as e:
             print(f"Erro ao carregar arquivo: {e}")
             BANCO_DE_USUARIOS = [usuario_default]
@@ -217,7 +217,7 @@ def configurações():
     pass_entry.insert(0, usuario_logado.password)
     pass_entry.pack(pady=5)
 
-    ttk.Button(config_window, text="Salvar", command=lambda: salvar_config(ip_entry.get(), user_entry.get(), pass_entry.get())).pack(pady=20)
+    ttk.Button(config_window, text="Salvar", command=lambda: salvar_config(ip_entry.get(), user_entry.get(), pass_entry.get(), main_window)).pack(pady=20)
     
 #---CONFIGURAÇÕES DO SERVIDOR FLASK---
 @app.route('/log', methods=['POST'])
