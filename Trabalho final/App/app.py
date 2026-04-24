@@ -7,7 +7,7 @@ from flask import Flask, request, jsonify
 from datetime import datetime
 import threading
 
-IDS_AUTORIZADOS = ["31AC1CAA", "00C12C1F"]
+IDS_AUTORIZADOS = []
 app = Flask(__name__)
 
 ip_esp = "192.168.0.206"
@@ -68,47 +68,71 @@ def salvar_config(novo_ip, novo_user, novo_password):
     
 # --- PERSISTÊNCIA DE DADOS ---
 def carregar_config():
-    global ip_esp, BANCO_DE_USUARIOS
+    global ip_esp, BANCO_DE_USUARIOS, IDS_AUTORIZADOS
+    
     usuario_default = Usuario("admin", "123", "admin")
+    
     if os.path.exists(ARQUIVO_CONFIG):
         try:
             with open(ARQUIVO_CONFIG, "r") as f:
                 dados = json.load(f)
                 ip_esp = dados.get("ip", "192.168.0.206")
                 lista = dados.get("lista_usuarios", [])
-                if not lista:
-                    BANCO_DE_USUARIOS = [usuario_default]
-                else:
-                    BANCO_DE_USUARIOS = [Usuario(u.get("username"), u.get("password"), u.get("nivel_acesso")) for u in lista]
+                BANCO_DE_USUARIOS = []
+                for u in lista:
+                    if u.get("username") and u.get("password") and u.get("nivel_acesso"):
+                        BANCO_DE_USUARIOS.append(
+                            Usuario(u["username"], u["password"], u["nivel_acesso"])
+                        )
+                if not BANCO_DE_USUARIOS:
+                    BANCO_DE_USUARIOS = [usuario_default]   
+
+                IDS_AUTORIZADOS = dados.get("IDS_AUTORIZADOS", [])
         except Exception as e:
             print(f"Erro ao carregar arquivo: {e}")
-            BANCO_DE_USUARIOS = [usuario_default]
+            ip_esp = "192.168.0.206"
+
     else:
         BANCO_DE_USUARIOS = [usuario_default]
+        IDS_AUTORIZADOS = []
 
 def salvar_no_arquivo(ip, user, password):
-    global ip_esp, usuario_logado, BANCO_DE_USUARIOS
-
-    # Prepara a lista de usuários para formato JSON
-    lista_usuarios_json = []
-    for u in BANCO_DE_USUARIOS:
-        lista_usuarios_json.append({
-            "u": u.username, 
-            "s": u.password, 
-            "n": u.nivel_acesso
-        })
+    global ip_esp, usuario_logado, BANCO_DE_USUARIOS, IDS_AUTORIZADOS
 
     ip_esp = ip
     usuario_logado.username = user
     usuario_logado.password = password
+     #Carrega o JSON existente
+    if os.path.exists(ARQUIVO_CONFIG):
+        try:
+            with open(ARQUIVO_CONFIG, "r") as f:
+                dados = json.load(f)
+        except:
+            dados = {}
+    else:
+        dados = {}
 
-    dados_para_salvar = [{"u": u.username, "s": u.password, "n": u.nivel_acesso} for u in BANCO_DE_USUARIOS]
+    #Atualiza apenas o necessário
+    dados["ip"] = ip_esp
+
+    dados["lista_usuarios"] = [
+        {
+            "username": u.username,
+            "password": u.password,
+            "nivel_acesso": u.nivel_acesso
+        }
+        for u in BANCO_DE_USUARIOS
+    ]
+
+    dados["IDS_AUTORIZADOS"] = IDS_AUTORIZADOS
+
+    #Salva mantendo o resto (ssid, serverUrl, etc)
     try:
         with open(ARQUIVO_CONFIG, "w") as f:
-            json.dump({"ip": ip_esp, "lista_usuarios": lista_usuarios_json}, f, indent=4)
-        print("Arquivo de configuração atualizado.")
+            json.dump(dados, f, indent=4)
+        print("Configuração atualizada sem perder dados.")
     except Exception as e:
-        print(f"Erro ao salvar arquivo: {e}")
+        print(f"Erro ao salvar: {e}")
 
 def validar_login(user, password):
     global usuario_logado
@@ -118,6 +142,15 @@ def validar_login(user, password):
             usuario_logado = u
             return True
     return False
+
+def verificar_uid(uid):
+    for item in IDS_AUTORIZADOS:
+        if item["uid"] == uid:
+            return True, item["nome"]
+    return False, None
+
+def is_admin():
+    return usuario_logado and usuario_logado.nivel_acesso == "admin"
 
 # --- INTERFACES ---
 def entrada():
@@ -193,6 +226,9 @@ def tela_principal():
     
     log_display.insert(tk.END, "Conectado ao ESP32...\nAguardando dados...\n")
     
+    if usuario_logado.nivel_acesso == "admin":
+        ttk.Button(main_window, text="Gerenciar IDs", command=janela_ids).pack(pady=5)
+    
     main_window.mainloop()
 
 def configurações():
@@ -217,8 +253,73 @@ def configurações():
     pass_entry.insert(0, usuario_logado.password)
     pass_entry.pack(pady=5)
 
-    ttk.Button(config_window, text="Salvar", command=lambda: salvar_config(ip_entry.get(), user_entry.get(), pass_entry.get())).pack(pady=20)
+    ttk.Button(config_window, text="Salvar", command=lambda: salvar_config(ip_entry.get(), user_entry.get(), pass_entry.get() )).pack(pady=20)
+
+def adicionar_id(uid, nome):
+    if not is_admin():
+        messagebox.showerror("Acesso negado", "Apenas administradores podem adicionar IDs.")
+        return
     
+    for item in IDS_AUTORIZADOS:
+        if item["uid"] == uid:
+            messagebox.showwarning("Aviso", "UID já cadastrado.")
+            return
+
+    IDS_AUTORIZADOS.append({"uid": uid, "nome": nome})
+    salvar_no_arquivo(ip_esp, usuario_logado.username, usuario_logado.password)
+    messagebox.showinfo("Sucesso", "ID adicionado com sucesso!") 
+
+def remover_id(uid):
+    if not is_admin():
+        messagebox.showerror("Acesso negado", "Apenas administradores podem remover IDs.")
+        return
+    
+    global IDS_AUTORIZADOS
+    IDS_AUTORIZADOS = [i for i in IDS_AUTORIZADOS if i["uid"] != uid]
+    salvar_no_arquivo(ip_esp, usuario_logado.username, usuario_logado.password)
+    messagebox.showinfo("Sucesso", "ID removido!") 
+
+def janela_ids():
+    if not is_admin():
+        messagebox.showerror("Acesso negado", "Apenas administradores.")
+        return
+
+    win = tk.Toplevel()
+    win.title("Gerenciar IDs")
+    win.geometry("400x400")
+
+    listbox = tk.Listbox(win, width=50)
+    listbox.pack(pady=10)
+
+    def atualizar_lista():
+        listbox.delete(0, tk.END)
+        for item in IDS_AUTORIZADOS:
+            listbox.insert(tk.END, f'{item["nome"]} - {item["uid"]}')
+
+    atualizar_lista()
+
+    tk.Label(win, text="Nome").pack()
+    nome_entry = tk.Entry(win)
+    nome_entry.pack()
+
+    tk.Label(win, text="UID").pack()
+    uid_entry = tk.Entry(win)
+    uid_entry.pack()
+
+    def add():
+        adicionar_id(uid_entry.get(), nome_entry.get())
+        atualizar_lista()
+
+    def remove():
+        selecionado = listbox.get(tk.ACTIVE)
+        if selecionado:
+            uid = selecionado.split(" - ")[1]
+            remover_id(uid)
+            atualizar_lista()
+
+    tk.Button(win, text="Adicionar", command=add).pack(pady=5)
+    tk.Button(win, text="Remover", command=remove).pack(pady=5)
+
 #---CONFIGURAÇÕES DO SERVIDOR FLASK---
 @app.route('/log', methods=['POST'])
 def receber_log():
@@ -228,9 +329,11 @@ def receber_log():
     horario = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     
    # Verifica se a UID recebida está na nossa lista
-    if uid in IDS_AUTORIZADOS:
+    autorizado, nome = verificar_uid(uid)
+
+    if autorizado:
         status = "autorizado"
-        msg_tela = f"[{horario}] ACESSO LIBERADO: {uid}\n"
+        msg_tela = f"[{horario}] ACESSO LIBERADO: {nome} - {uid}\n"
     else:
         status = "negado"
         msg_tela = f"[{horario}] ACESSO NEGADO: {uid}\n"
