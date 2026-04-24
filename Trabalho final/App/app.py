@@ -144,8 +144,11 @@ def validar_login(user, password):
     return False
 
 def verificar_uid(uid):
+    uid = uid.strip().upper()
     for item in IDS_AUTORIZADOS:
-        if item["uid"] == uid:
+        uid_salvo = item["uid"].strip().upper()
+        print(f"Comparando UID recebido: '{uid}' com UID salvo: '{uid_salvo}'")
+        if uid == uid_salvo:
             return True, item["nome"]
     return False, None
 
