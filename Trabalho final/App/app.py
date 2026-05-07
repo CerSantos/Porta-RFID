@@ -25,7 +25,7 @@ user_entry = None
 password_entry = None  
 btn_acessar = None
 
-ARQUIVO_CONFIG = "config.json"
+ARQUIVO_CONFIG = "data/config.json"
 
 #--- CLASSES ---
 class Usuario:
@@ -46,7 +46,7 @@ def salvar_config(novo_ip, novo_user, novo_password):
     global ip_esp,BANCO_DE_USUARIOS  
 
     ip_esp = ip = novo_ip
-    # Validação simples para não salvar campos vazios
+    # Validação para não salvar campos vazios
     if not novo_ip or not novo_user or not novo_password:
         messagebox.showwarning("Aviso", "Todos os campos devem ser preenchidos.")
         return

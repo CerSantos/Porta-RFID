@@ -47,7 +47,7 @@ bool carregarConfig() {
   }
 
   // 4. Faz o parsing do JSON
-  StaticJsonDocument<256> doc;
+  DynamicJsonDocument doc(1024); 
   DeserializationError error = deserializeJson(doc, configFile);
   configFile.close();
 
@@ -80,9 +80,8 @@ void setup() {
     Serial.println("Usando configurações padrão ou travando por falta de dados.");
   }
 
-   Serial.println("Conectando ao WiFi...");
+  Serial.println("Conectando ao WiFi...");
   Serial.println("Conectando ao SSID: " + ssid);
-  WiFi.begin(ssid.c_str(), password.c_str());
 
   WiFi.begin(ssid.c_str(), password.c_str());
   while (WiFi.status() != WL_CONNECTED) {
