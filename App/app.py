@@ -8,12 +8,18 @@ from datetime import datetime
 import threading
 
 IDS_AUTORIZADOS = []
+STATUS_USUARIOS = {
+    "31AC1CAA": "dentro",
+    "00C12C1F": "fora"
+}
 app = Flask(__name__)
 
-ip_esp = "192.168.0.206"
+ip_esp = {
+    "entrada": "192.168.0.206",
+    "saida": "192.168.0.207"
+}
 usuario = "admin"
 senha = "123"
-ip = ip_esp
 user = usuario
 password = senha
 
@@ -42,12 +48,13 @@ class Usuario:
 BANCO_DE_USUARIOS = []
 
 # --- LÓGICA DE CONFIGURAÇÃO ---
-def salvar_config(novo_ip, novo_user, novo_password):
+def salvar_config(ip_entrada, ip_saida, novo_user, novo_password):
     global ip_esp,BANCO_DE_USUARIOS  
 
-    ip_esp = ip = novo_ip
+    ip_esp = {"entrada": ip_entrada, "saida": ip_saida}
+    
     # Validação para não salvar campos vazios
-    if not novo_ip or not novo_user or not novo_password:
+    if not ip_entrada or not ip_saida or not novo_user or not novo_password:
         messagebox.showwarning("Aviso", "Todos os campos devem ser preenchidos.")
         return
     
@@ -62,21 +69,24 @@ def salvar_config(novo_ip, novo_user, novo_password):
     usuario_logado.password = novo_password
 
     # Salva todos da lista de volta no arquivo
-    salvar_no_arquivo(ip_esp, novo_user, novo_password)
+    salvar_no_arquivo(novo_user, novo_password)
     
     messagebox.showinfo("Sucesso", "Dados atualizados!")
     
 # --- PERSISTÊNCIA DE DADOS ---
 def carregar_config():
-    global ip_esp, BANCO_DE_USUARIOS, IDS_AUTORIZADOS
-    
+    global ip_esp, BANCO_DE_USUARIOS, IDS_AUTORIZADOS, STATUS_USUARIOS
+    print("Usuários carregados:")
     usuario_default = Usuario("admin", "123", "admin")
-    
+
     if os.path.exists(ARQUIVO_CONFIG):
         try:
             with open(ARQUIVO_CONFIG, "r") as f:
                 dados = json.load(f)
-                ip_esp = dados.get("ip", "192.168.0.206")
+                ip_esp = dados.get("esp32", {
+                "entrada": "192.168.0.206",
+                "saida": "192.168.0.208"
+                })
                 lista = dados.get("lista_usuarios", [])
                 BANCO_DE_USUARIOS = []
                 for u in lista:
@@ -84,22 +94,29 @@ def carregar_config():
                         BANCO_DE_USUARIOS.append(
                             Usuario(u["username"], u["password"], u["nivel_acesso"])
                         )
+                        for u in BANCO_DE_USUARIOS:
+                            print(f"- {u.username} ({u.nivel_acesso})")
                 if not BANCO_DE_USUARIOS:
+                    print("Nenhum usuário válido encontrado no arquivo")
                     BANCO_DE_USUARIOS = [usuario_default]   
 
                 IDS_AUTORIZADOS = dados.get("IDS_AUTORIZADOS", [])
+                STATUS_USUARIOS = dados.get("STATUS_USUARIOS", {})
         except Exception as e:
             print(f"Erro ao carregar arquivo: {e}")
-            ip_esp = "192.168.0.206"
+            ip_esp = {
+        "entrada": "192.168.0.206",
+        "saida": "192.168.0.207"
+        }
 
     else:
+        print("Arquivo de configuração não encontrado. Usando valores padrão.")
         BANCO_DE_USUARIOS = [usuario_default]
         IDS_AUTORIZADOS = []
 
-def salvar_no_arquivo(ip, user, password):
+def salvar_no_arquivo(user, password):
     global ip_esp, usuario_logado, BANCO_DE_USUARIOS, IDS_AUTORIZADOS
 
-    ip_esp = ip
     usuario_logado.username = user
     usuario_logado.password = password
      #Carrega o JSON existente
@@ -113,7 +130,7 @@ def salvar_no_arquivo(ip, user, password):
         dados = {}
 
     #Atualiza apenas o necessário
-    dados["ip"] = ip_esp
+    dados["esp32"] = ip_esp
 
     dados["lista_usuarios"] = [
         {
@@ -125,8 +142,8 @@ def salvar_no_arquivo(ip, user, password):
     ]
 
     dados["IDS_AUTORIZADOS"] = IDS_AUTORIZADOS
+    dados["STATUS_USUARIOS"] = STATUS_USUARIOS
 
-    #Salva mantendo o resto (ssid, serverUrl, etc)
     try:
         with open(ARQUIVO_CONFIG, "w") as f:
             json.dump(dados, f, indent=4)
@@ -237,14 +254,21 @@ def tela_principal():
 def configurações():
     config_window = tk.Toplevel()
     config_window.title("Configurações")
-    config_window.geometry("400x300+500+230")
+    config_window.geometry("400x450+500+230")
 
     ttk.Label(config_window, text="Configurações", font=("Arial", 14, "bold")).pack(pady=10)
 
-    ttk.Label(config_window, text="IP da ESP32:").pack(pady=5)
-    ip_entry = ttk.Entry(config_window, width=30)
-    ip_entry.insert(0, ip_esp)
-    ip_entry.pack(pady=5)
+    ttk.Label(config_window, text="IP ESP Entrada:").pack(pady=5)
+
+    ip_entrada_entry = ttk.Entry(config_window, width=30)
+    ip_entrada_entry.insert(0, ip_esp["entrada"])
+    ip_entrada_entry.pack(pady=5)
+
+    ttk.Label(config_window, text="IP ESP Saída:").pack(pady=5)
+
+    ip_saida_entry = ttk.Entry(config_window, width=30)
+    ip_saida_entry.insert(0, ip_esp["saida"])
+    ip_saida_entry.pack(pady=5)
 
     ttk.Label(config_window, text="Usuário:").pack(pady=5)
     user_entry = ttk.Entry(config_window, width=30)
@@ -256,8 +280,21 @@ def configurações():
     pass_entry.insert(0, usuario_logado.password)
     pass_entry.pack(pady=5)
 
-    ttk.Button(config_window, text="Salvar", command=lambda: salvar_config(ip_entry.get(), user_entry.get(), pass_entry.get() )).pack(pady=20)
+    def salvar_e_fechar():
+        salvar_config(
+        ip_entrada_entry.get(),
+        ip_saida_entry.get(),
+        user_entry.get(),
+        pass_entry.get()
+        )   
+        config_window.destroy()
 
+    ttk.Button(
+        config_window,
+        text="Salvar",
+        command=salvar_e_fechar
+    ).pack(pady=20)
+    
 def adicionar_id(uid, nome):
     if not is_admin():
         messagebox.showerror("Acesso negado", "Apenas administradores podem adicionar IDs.")
@@ -269,7 +306,7 @@ def adicionar_id(uid, nome):
             return
 
     IDS_AUTORIZADOS.append({"uid": uid, "nome": nome})
-    salvar_no_arquivo(ip_esp, usuario_logado.username, usuario_logado.password)
+    salvar_no_arquivo(usuario_logado.username, usuario_logado.password)
     messagebox.showinfo("Sucesso", "ID adicionado com sucesso!") 
 
 def remover_id(uid):
@@ -279,7 +316,7 @@ def remover_id(uid):
     
     global IDS_AUTORIZADOS
     IDS_AUTORIZADOS = [i for i in IDS_AUTORIZADOS if i["uid"] != uid]
-    salvar_no_arquivo(ip_esp, usuario_logado.username, usuario_logado.password)
+    salvar_no_arquivo(usuario_logado.username, usuario_logado.password)
     messagebox.showinfo("Sucesso", "ID removido!") 
 
 def janela_ids():
@@ -329,17 +366,35 @@ def receber_log():
     global log_display
     dados = request.json
     uid = dados.get("uid")
+    porta = dados.get("porta","").lower()
     horario = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     
    # Verifica se a UID recebida está na nossa lista
     autorizado, nome = verificar_uid(uid)
+    estado_atual = STATUS_USUARIOS.get(uid, "fora")
 
     if autorizado:
-        status = "autorizado"
-        msg_tela = f"[{horario}] ACESSO LIBERADO: {nome} - {uid}\n"
+        if porta == "entrada":
+            if estado_atual == "dentro":
+                status = "negado"
+                msg_tela = f"[{horario}] ACESSO NEGADO (ENTRADA): {nome} ({uid}) já está dentro.\n"
+            else:
+                STATUS_USUARIOS[uid] = "dentro"
+                salvar_no_arquivo(usuario_logado.username, usuario_logado.password)
+                status = "autorizado"
+                msg_tela = f"[{horario}] ACESSO PERMITIDO (ENTRADA): {nome} ({uid}) entrou.\n"
+        elif porta == "saida":
+            if estado_atual == "fora":
+                status = "negado"
+                msg_tela = f"[{horario}] ACESSO NEGADO (SAÍDA): {nome} ({uid}) já está fora.\n"
+            else:
+                STATUS_USUARIOS[uid] = "fora"
+                salvar_no_arquivo(usuario_logado.username, usuario_logado.password)
+                status = "autorizado"
+                msg_tela = f"[{horario}] ACESSO PERMITIDO (SAÍDA): {nome} ({uid}) saiu.\n"
     else:
         status = "negado"
-        msg_tela = f"[{horario}] ACESSO NEGADO: {uid}\n"
+        msg_tela = f"[{horario}] ACESSO NEGADO ({porta.upper()}): {uid}\n"
 
     # Atualiza a interface
     if log_display:
